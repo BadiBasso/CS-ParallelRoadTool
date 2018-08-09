@@ -229,7 +229,19 @@ namespace ParallelRoadTool.Detours
                 _isPreviousInvert = invert;
 
             // If we're in upgrade mode we must stop here
-            if (ToolsModifierControl.GetTool<NetTool>().m_mode == NetTool.Mode.Upgrade) return result;
+            //if (ToolsModifierControl.GetTool<NetTool>().m_mode == NetTool.Mode.Upgrade) return result;
+
+            var isUpgradeActive = false;
+            var upgradeInvert = false;
+            if (ToolsModifierControl.GetTool<NetTool>().m_mode == NetTool.Mode.Upgrade)
+            {
+                isUpgradeActive = true;
+                upgradeInvert = invert;
+                if (startDirection.x == endDirection.x && startDirection.y == endDirection.y)
+                    ToolsModifierControl.GetTool<NetTool>().m_mode = NetTool.Mode.Straight;
+                else
+                    ToolsModifierControl.GetTool<NetTool>().m_mode = NetTool.Mode.Curved;
+            }
 
             // True if we have a slope that is going down from start to end node
             var isEnteringSlope = NetManager.instance.m_nodes.m_buffer[invert ? startNode : endNode].m_elevation >
@@ -246,27 +258,7 @@ namespace ParallelRoadTool.Detours
 
             if (!AllowedCallers.Contains(caller)) return result;
 
-            // If we're in upgrade mode we must stop here
-            //if (ParallelRoadTool.NetTool.m_mode == NetTool.Mode.Upgrade) return result;
-            var isUpgradeActive = false;
-            var upgradeInvert = false;
-            if (ParallelRoadTool.NetTool.m_mode == NetTool.Mode.Upgrade)
-            {
-                isUpgradeActive = true;
-                upgradeInvert = invert;
-                if (startDirection.x == endDirection.x && startDirection.y == endDirection.y)
-                    ParallelRoadTool.NetTool.m_mode = NetTool.Mode.Straight;
-                else
-                    ParallelRoadTool.NetTool.m_mode = NetTool.Mode.Curved;
-            }
-
-
-            // True if we have a slope that is going down from start to end node
-            var isEnteringSlope = NetManager.instance.m_nodes.m_buffer[invert ? startNode : endNode].m_elevation >
-                                  NetManager.instance.m_nodes.m_buffer[invert ? endNode : startNode].m_elevation;
-
-
-            for (var i = 0; i < ParallelRoadTool.SelectedRoadTypes.Count; i++)
+           for (var i = 0; i < Singleton<ParallelRoadTool>.instance.SelectedRoadTypes.Count; i++)
             {
                 var currentRoadInfos = Singleton<ParallelRoadTool>.instance.SelectedRoadTypes[i];
 
@@ -399,7 +391,7 @@ namespace ParallelRoadTool.Detours
             _isPreviousInvert = invert;
             if (isUpgradeActive)
             {
-                ParallelRoadTool.NetTool.m_mode = NetTool.Mode.Upgrade;
+                ToolsModifierControl.GetTool<NetTool>().m_mode = NetTool.Mode.Upgrade;
                 _isPreviousInvert = upgradeInvert;
             }
             return result;
