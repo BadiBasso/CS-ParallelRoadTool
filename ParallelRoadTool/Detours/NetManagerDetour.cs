@@ -51,13 +51,13 @@ namespace ParallelRoadTool.Detours
         // We store nodes from previous iteration so that we know which node to connect to
         private static ushort?[] _endNodeId, _clonedEndNodeId, _startNodeId, _clonedStartNodeId;
         private static bool _isPreviousInvert;
+        private static uint _previousBuildIndex;
 
         // Our detour should execute only if caller is one of the following
         private static readonly string[] AllowedCallers =
         {
             "NetTool.CreateNode.CreateNode"
         };
-
         /// <summary>
         ///     Sets the number of enabled parallel networks
         /// </summary>
@@ -218,12 +218,29 @@ namespace ParallelRoadTool.Detours
             ushort endNode, Vector3 startDirection, Vector3 endDirection, uint buildIndex, uint modifiedIndex,
             bool invert)
         {
+
+            var isUpgradeActive = (ToolsModifierControl.GetTool<NetTool>().m_mode == NetTool.Mode.Upgrade);
+
             DebugUtils.Log(
                 $"Creating a segment and {Singleton<ParallelRoadTool>.instance.SelectedRoadTypes.Count} parallel segments");
 
+            var currentBuildIndex = Singleton<SimulationManager>.instance.m_currentBuildIndex;
+            DebugUtils.DumpObject(NetManager.instance.m_segments.m_buffer[currentBuildIndex], "SegmentBuildIndexBefore");
+            //            DebugUtils.DumpObject(NetManager.instance.m_segments.m_buffer[modifiedIndex], "SegmentModifiedIndexBefore");
+            DebugUtils.Log($"B_CurrentBuildIndex: {currentBuildIndex}");
+            DebugUtils.Log($"B_BuildIndex: {buildIndex}");
+            DebugUtils.Log($"B_ModifiedIndex: {modifiedIndex}");
+
             // Let's create the segment that the user requested
             var result = CreateSegmentOriginal(out segment, ref randomizer, info, startNode, endNode, startDirection,
-                endDirection, buildIndex, modifiedIndex, invert);
+            endDirection, buildIndex, modifiedIndex, invert);
+            currentBuildIndex = Singleton<SimulationManager>.instance.m_currentBuildIndex;
+            DebugUtils.DumpObject(NetManager.instance.m_segments.m_buffer[currentBuildIndex], "SegmentBuildIndexAfter");
+            //            DebugUtils.DumpObject(NetManager.instance.m_segments.m_buffer[modifiedIndex], "SegmentModifiedIndexAfter");
+            DebugUtils.Log($"A_CurrentBuildIndex: {currentBuildIndex}");
+            DebugUtils.Log($"A_BuildIndex: {buildIndex}");
+            DebugUtils.Log($"A_ModifiedIndex: {modifiedIndex}");
+
 
             if (Singleton<ParallelRoadTool>.instance.IsLeftHandTraffic)
                 _isPreviousInvert = invert;
@@ -231,17 +248,23 @@ namespace ParallelRoadTool.Detours
             // If we're in upgrade mode we must stop here
             //if (ToolsModifierControl.GetTool<NetTool>().m_mode == NetTool.Mode.Upgrade) return result;
 
-            var isUpgradeActive = false;
+            //var isUpgradeActive = false;
             var upgradeInvert = false;
-            if (ToolsModifierControl.GetTool<NetTool>().m_mode == NetTool.Mode.Upgrade)
+            //if (ToolsModifierControl.GetTool<NetTool>().m_mode == NetTool.Mode.Upgrade)
+            if (isUpgradeActive)
             {
-                isUpgradeActive = true;
+                //isUpgradeActive = true;
                 upgradeInvert = invert;
-                if (startDirection.x == endDirection.x && startDirection.y == endDirection.y)
-                    ToolsModifierControl.GetTool<NetTool>().m_mode = NetTool.Mode.Straight;
-                else
-                    ToolsModifierControl.GetTool<NetTool>().m_mode = NetTool.Mode.Curved;
+                ToolsModifierControl.GetTool<NetTool>().m_mode = NetTool.Mode.Straight;
             }
+
+            if (isUpgradeActive && _previousBuildIndex == buildIndex)
+            {
+                //_previousBuildIndex = buildIndex;
+                ToolsModifierControl.GetTool<NetTool>().m_mode = NetTool.Mode.Upgrade;
+                _isPreviousInvert = upgradeInvert;
+                return result;
+            };
 
             // True if we have a slope that is going down from start to end node
             var isEnteringSlope = NetManager.instance.m_nodes.m_buffer[invert ? startNode : endNode].m_elevation >
@@ -258,7 +281,7 @@ namespace ParallelRoadTool.Detours
 
             if (!AllowedCallers.Contains(caller)) return result;
 
-           for (var i = 0; i < Singleton<ParallelRoadTool>.instance.SelectedRoadTypes.Count; i++)
+            for (var i = 0; i < Singleton<ParallelRoadTool>.instance.SelectedRoadTypes.Count; i++)
             {
                 var currentRoadInfos = Singleton<ParallelRoadTool>.instance.SelectedRoadTypes[i];
 
@@ -290,6 +313,7 @@ namespace ParallelRoadTool.Detours
                 var startNetNode = NetManager.instance.m_nodes.m_buffer[startNode];
                 var endNetNode = NetManager.instance.m_nodes.m_buffer[endNode];
 
+                // Needed in EndNode creation and in NetToolDetour for displaying overlay on the correct side
                 // Create two clone nodes by offsetting the original ones.
                 // If we're not in "invert" mode (aka final part of a curve) and we already have an ending node with the same id of our starting node, we need to use that so that the segments can be connected.
                 // If the previous segment was in "invert" mode and the current startNode is the same as the previous one, we need to connect them.
@@ -297,49 +321,83 @@ namespace ParallelRoadTool.Detours
                 ushort newStartNodeId;
                 if (!invert && _endNodeId[i].HasValue && _endNodeId[i].Value == startNode)
                 {
-                    DebugUtils.Log(
-                        $"[START] Using old node from previous iteration {_clonedEndNodeId[i].Value} instead of the given one {startNode}");
+                    //                    DebugUtils.Log(
+                    //                        $"[START] Using old node from previous iteration {_clonedEndNodeId[i].Value} instead of the given one {startNode}");
                     newStartNodeId = _clonedEndNodeId[i].Value;
-                    DebugUtils.Log(
-                        $"[START] Start node {startNetNode.m_position} becomes {NetManager.instance.m_nodes.m_buffer[newStartNodeId].m_position}");
+                    DebugUtils.Log($"[start] if");
+                    //                    DebugUtils.Log(
+                    //                        $"[START] Start node {startNetNode.m_position} becomes {NetManager.instance.m_nodes.m_buffer[newStartNodeId].m_position}");
                 }
                 else if (!invert && _isPreviousInvert && _startNodeId[i].HasValue &&
                          _startNodeId[i].Value == startNode)
                 {
-                    DebugUtils.Log(
-                        $"[START] Using old node from previous iteration {_clonedStartNodeId[i].Value} instead of the given one {startNode}");
+                    //                    DebugUtils.Log(
+                    //                        $"[START] Using old node from previous iteration {_clonedStartNodeId[i].Value} instead of the given one {startNode}");
                     newStartNodeId = _clonedStartNodeId[i].Value;
-                    DebugUtils.Log(
-                        $"[START] Start node{startNetNode.m_position} becomes {NetManager.instance.m_nodes.m_buffer[newStartNodeId].m_position}");
+                    DebugUtils.Log($"[start] else if");
+                    //                    DebugUtils.Log(
+                    //                        $"[START] Start node{startNetNode.m_position} becomes {NetManager.instance.m_nodes.m_buffer[newStartNodeId].m_position}");
+                }
+                else if (invert && !_isPreviousInvert && _startNodeId[i].HasValue &&
+                         _startNodeId[i].Value == startNode)
+                {
+                    newStartNodeId = _clonedStartNodeId[i].Value;
+                    DebugUtils.Log($"[start] inv 1 else if");
+                }
+                else if (invert && _startNodeId[i].HasValue && _startNodeId[i].Value == endNode)  //when in upgrade mode and going "backwards"
+                {
+                    newStartNodeId = _clonedEndNodeId[i].Value;
+                    DebugUtils.Log($"[start] inv 2 else if");
                 }
                 else
                 {
                     var newStartPosition = startNetNode.m_position.Offset(startDirection, horizontalOffset,
                         verticalOffset, invert);
 
-                    DebugUtils.Log(
-                        $"[START] {startNetNode.m_position} --> {newStartPosition} | isLeftHand = {Singleton<ParallelRoadTool>.instance.IsLeftHandTraffic} | invert = {invert}  | isSlope = {isSlope}");
+                    //                    DebugUtils.Log(
+                    //                        $"[START] {startNetNode.m_position} --> {newStartPosition} | isLeftHand = {Singleton<ParallelRoadTool>.instance.IsLeftHandTraffic} | invert = {invert}  | isSlope = {isSlope}");
                     newStartNodeId = NodeAtPositionOrNew(ref randomizer, info, newStartPosition, verticalOffset);
+                    DebugUtils.Log($"[start] else");
+
                 }
 
                 // Same thing as startNode, but this time we don't clone if we're in "invert" mode as we may need to connect this ending node with the previous ending one.
                 ushort newEndNodeId;
                 if (invert && _endNodeId[i].HasValue && _endNodeId[i].Value == endNode)
                 {
-                    DebugUtils.Log(
-                        $"[END] Using old node from previous iteration {_clonedEndNodeId[i].Value} instead of the given one {endNode}");
+                    //                    DebugUtils.Log(
+                    //                        $"[END] Using old node from previous iteration {_clonedEndNodeId[i].Value} instead of the given one {endNode}");
                     newEndNodeId = _clonedEndNodeId[i].Value;
-                    DebugUtils.Log(
-                        $"[END] End node{endNetNode.m_position} becomes {NetManager.instance.m_nodes.m_buffer[newEndNodeId].m_position}");
+                    DebugUtils.Log($"[end] if");
+                    //                    DebugUtils.Log(
+                    //                        $"[END] End node{endNetNode.m_position} becomes {NetManager.instance.m_nodes.m_buffer[newEndNodeId].m_position}");
+                }
+                else if (invert && !_isPreviousInvert && _endNodeId[i].HasValue &&
+                         _endNodeId[i].Value == endNode)
+                {
+                    newEndNodeId = _clonedEndNodeId[i].Value;
+                    DebugUtils.Log($"[end] inv else if");
+                }
+                else if (!invert && _isPreviousInvert && _endNodeId[i].HasValue &&
+                         _endNodeId[i].Value == endNode)
+                {
+                    newEndNodeId = _clonedEndNodeId[i].Value;
+                    DebugUtils.Log($"[end] 1 else if");
+                }
+                else if (!invert && _startNodeId[i].HasValue && _startNodeId[i].Value == endNode) //when in upgrade mode and going "backwards"
+                {
+                    newEndNodeId = _clonedStartNodeId[i].Value;
+                    DebugUtils.Log($"[end] 2 else if");
                 }
                 else
                 {
-                    var newEndPosition = endNetNode.m_position.Offset(endDirection, horizontalOffset, verticalOffset,
+                    var newEndPosition = endNetNode.m_position.Offset(endDirection, horizontalOffset * ((isUpgradeActive && invert) ? -1 : 1), verticalOffset,
                         !(invert && isSlope && isEnteringSlope));
 
-                    DebugUtils.Log(
-                        $"[END] {endNetNode.m_position} --> {newEndPosition} | isEnteringSlope = {isEnteringSlope} | invert = {invert} | isSlope = {isSlope}");
+                    //                    DebugUtils.Log(
+                    //                        $"[END] {endNetNode.m_position} --> {newEndPosition} | isEnteringSlope = {isEnteringSlope} | invert = {invert} | isSlope = {isSlope}");
                     newEndNodeId = NodeAtPositionOrNew(ref randomizer, info, newEndPosition, verticalOffset);
+                    DebugUtils.Log($"[end] else");
                 }
 
                 // Store current end nodes in case we may need to connect the following segment to them
@@ -381,6 +439,10 @@ namespace ParallelRoadTool.Detours
                         Singleton<SimulationManager>.instance.m_currentBuildIndex, invert);
                 }
 
+                DebugUtils.Log($"L_{i} CurrentBuildIndex: {currentBuildIndex}");
+                DebugUtils.Log($"L_{i} BuildIndex: {buildIndex}");
+                DebugUtils.Log($"L_{i} ModifiedIndex: {modifiedIndex}");
+
                 // Left-hand drive revert conditions back
                 if (!Singleton<ParallelRoadTool>.instance.IsLeftHandTraffic) continue;
                 invert = !invert;
@@ -389,11 +451,15 @@ namespace ParallelRoadTool.Detours
             }
 
             _isPreviousInvert = invert;
+            _previousBuildIndex = buildIndex;
             if (isUpgradeActive)
             {
                 ToolsModifierControl.GetTool<NetTool>().m_mode = NetTool.Mode.Upgrade;
                 _isPreviousInvert = upgradeInvert;
             }
+            DebugUtils.Log($"E_CurrentBuildIndex: {currentBuildIndex}");
+            DebugUtils.Log($"E_BuildIndex: {buildIndex}");
+            DebugUtils.Log($"E_ModifiedIndex: {modifiedIndex}");
             return result;
         }
     }

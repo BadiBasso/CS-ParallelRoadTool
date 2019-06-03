@@ -1,4 +1,5 @@
 ﻿using System;
+using System.ComponentModel;
 using System.Linq;
 using ColossalFramework.Plugins;
 using UnityEngine;
@@ -49,6 +50,18 @@ namespace ParallelRoadTool.Utils
         {
             Log("Intercepted exception (not game breaking):");
             Debug.LogException(e);
+        }
+
+        public static void DumpObject(object myObject, string objectDescription, [CallerMemberName] string callerName = null)
+        {
+            string myObjectDetails = objectDescription + "\n";
+            foreach (PropertyDescriptor descriptor in TypeDescriptor.GetProperties(myObject))
+            {
+                string name = descriptor.Name;
+                object value = descriptor.GetValue(myObject);
+                myObjectDetails += name + ": " + value + "\n";
+            }
+            Debug.Log(ModPrefix + "[" + callerName + "] " + myObjectDetails);
         }
 
 #if DEBUG
