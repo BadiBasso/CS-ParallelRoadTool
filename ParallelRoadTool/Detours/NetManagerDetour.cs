@@ -56,7 +56,8 @@ namespace ParallelRoadTool.Detours
         // Our detour should execute only if caller is one of the following
         private static readonly string[] AllowedCallers =
         {
-            "NetTool.CreateNode.CreateNode"
+            "NetTool.CreateNode.CreateNode",
+            "NetTool.CreateNode.CreateNode_Patch0"
         };
         /// <summary>
         ///     Sets the number of enabled parallel networks
